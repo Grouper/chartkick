@@ -2,7 +2,7 @@
  * Chartkick.js
  * Create beautiful Javascript charts with minimal code
  * https://github.com/ankane/chartkick.js
- * v1.0.2
+ * v1.0.1
  * MIT License
  */
 
@@ -12,40 +12,43 @@
 (function() {
   'use strict';
 
-  // helpers
+  // http://stackoverflow.com/questions/728360/most-elegant-way-to-clone-a-javascript-object
+  function clone(obj) {
+    var copy, i, attr, len;
 
-  function isArray(variable) {
-    return Object.prototype.toString.call(variable) === "[object Array]";
-  }
-
-  function isPlainObject(variable) {
-    return variable instanceof Object;
-  }
-
-  // https://github.com/madrobby/zepto/blob/master/src/zepto.js
-  function extend(target, source) {
-    var key;
-    for (key in source) {
-      if (isPlainObject(source[key]) || isArray(source[key])) {
-        if (isPlainObject(source[key]) && !isPlainObject(target[key])) {
-          target[key] = {};
-        }
-        if (isArray(source[key]) && !isArray(target[key])) {
-          target[key] = [];
-        }
-        extend(target[key], source[key]);
-      }
-      else if (source[key] !== undefined) {
-        target[key] = source[key];
-      }
+    // Handle the 3 simple types, and null or undefined
+    if (null === obj || "object" !== typeof obj) {
+      return obj;
     }
-  }
 
-  function merge(obj1, obj2) {
-    var target = {};
-    extend(target, obj1);
-    extend(target, obj2);
-    return target;
+    // Handle Date
+    if (obj instanceof Date) {
+      copy = new Date();
+      copy.setTime(obj.getTime());
+      return copy;
+    }
+
+    // Handle Array
+    if (obj instanceof Array) {
+      copy = [];
+      for (i = 0, len = obj.length; i < len; i++) {
+        copy[i] = clone(obj[i]);
+      }
+      return copy;
+    }
+
+    // Handle Object
+    if (obj instanceof Object) {
+      copy = {};
+      for (attr in obj) {
+        if (obj.hasOwnProperty(attr)) {
+          copy[attr] = clone(obj[attr]);
+        }
+      }
+      return copy;
+    }
+
+    throw new Error("Unable to copy obj! Its type isn't supported.");
   }
 
   // https://github.com/Do/iso8601.js
@@ -98,7 +101,7 @@
 
   function jsOptionsFunc(defaultOptions, hideLegend, setMin, setMax) {
     return function(series, opts) {
-      var options = merge({}, defaultOptions);
+      var options = clone(defaultOptions);
 
       // hide legend
       // this is *not* an external option!
@@ -119,9 +122,6 @@
         setMax(options, opts.max);
       }
 
-      // merge library last
-      options = merge(options, opts.library || {});
-
       return options;
     };
   }
@@ -132,10 +132,16 @@
   if ("Highcharts" in window) {
 
     var defaultOptions = {
+      colors: ['#E7622E', '#16AACE', '#B8471B', '#135A6E', '#80CCB9', '#F2CD74', '#B89D5C', '#0A3E4C', '#D2D6BE', '#64A393'],
+      chart: {
+        backgroundColor: null
+      },
       xAxis: {
+        gridLineColor: '#D6DBC3',
         labels: {
           style: {
-            fontSize: "12px"
+            fontSize: "12px",
+            color: "#A2A693"
           }
         }
       },
@@ -143,9 +149,11 @@
         title: {
           text: null
         },
+        gridLineColor: '#D6DBC3',
         labels: {
           style: {
-            fontSize: "12px"
+            fontSize: "12px",
+            color: "#A2A693"
           }
         }
       },
@@ -156,11 +164,15 @@
         enabled: false
       },
       legend: {
-        borderWidth: 0
+        borderWidth: 0,
+        style: {
+          color: "#63655A"
+        }
       },
       tooltip: {
         style: {
-          fontSize: "12px"
+          fontSize: "12px",
+          color: "#A2A693"
         }
       }
     };
@@ -182,7 +194,17 @@
     renderLineChart = function(element, series, opts) {
       var options = jsOptions(series, opts), data, i, j;
       options.xAxis.type = "datetime";
-      options.chart = {type: "spline", renderTo: element.id};
+      options.xAxis.dateTimeLabelFormats = {
+        millisecond: '%H:%M:%S.%L',
+        second: '%H:%M:%S',
+        minute: '%H:%M',
+        hour: '%H:%M',
+        day: '%a %m/%e',
+        week: '%b %e', //%e. %b',
+        month: '%b \'%y',
+        year: '%Y'        
+      }
+      options.chart = {type: "spline", renderTo: element.id, backgroundColor: null};
 
       for (i = 0; i < series.length; i++) {
         data = series[i].data;
@@ -196,8 +218,8 @@
     };
 
     renderPieChart = function(element, series, opts) {
-      var options = merge(defaultOptions, opts.library || {});
-      options.chart = {renderTo: element.id};
+      var options = clone(defaultOptions);
+      options.chart = {renderTo: element.id, backgroundColor: null};
       options.series = [{
         type: "pie",
         name: "Value",
@@ -208,7 +230,7 @@
 
     renderColumnChart = function(element, series, opts) {
       var options = jsOptions(series, opts), i, j, s, d, rows = [];
-      options.chart = {type: "column", renderTo: element.id};
+      options.chart = {type: "column", renderTo: element.id, backgroundColor: null};
 
       for (i = 0; i < series.length; i++) {
         s = series[i];
@@ -314,6 +336,10 @@
 
     var jsOptions = jsOptionsFunc(defaultOptions, hideLegend, setMin, setMax);
 
+    var sortByNumber = function(a, b) {
+      return a[0] - b[0];
+    };
+
     // cant use object as key
     var createDataTable = function(series, columnType) {
       var data = new google.visualization.DataTable();
@@ -341,7 +367,7 @@
         }
       }
       if (columnType === "datetime") {
-        rows2.sort(sortByTime);
+        rows2.sort(sortByNumber);
       }
       data.addRows(rows2);
 
@@ -359,7 +385,7 @@
 
     renderPieChart = function(element, series, opts) {
       waitForLoaded(function() {
-        var options = merge(defaultOptions, opts.library || {});
+        var options = clone(defaultOptions);
         options.chartArea = {
           top: "10%",
           height: "80%"
@@ -431,6 +457,12 @@
     } else {
       errorCatcher(element, dataSource, opts, callback);
     }
+  }
+
+  // helpers
+
+  function isArray(variable) {
+    return Object.prototype.toString.call(variable) === "[object Array]";
   }
 
   // type conversions
@@ -525,7 +557,7 @@
     if (typeof element === "string") {
       element = document.getElementById(element);
     }
-    fetchDataSource(element, data, opts || {}, callback);
+    fetchDataSource(element, data, clone(opts || {}), callback);
   }
 
   // define classes
