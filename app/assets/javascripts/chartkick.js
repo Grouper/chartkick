@@ -2,7 +2,7 @@
  * Chartkick.js
  * Create beautiful Javascript charts with minimal code
  * https://github.com/ankane/chartkick.js
- * v1.0.1
+ * v1.1.0
  * MIT License
  */
 
@@ -100,8 +100,9 @@
   }
 
   function jsOptionsFunc(defaultOptions, hideLegend, setMin, setMax) {
-    return function(series, opts) {
-      var options = clone(defaultOptions);
+    return function(series, opts, chartOptions) {
+      var options = merge({}, defaultOptions);
+      options = merge(options, chartOptions || {});
 
       // hide legend
       // this is *not* an external option!
@@ -127,11 +128,12 @@
   }
 
   // only functions that need defined specific to charting library
-  var renderLineChart, renderPieChart, renderColumnChart;
+  var renderLineChart, renderPieChart, renderColumnChart, renderBarChart, renderAreaChart;
 
   if ("Highcharts" in window) {
 
     var defaultOptions = {
+
       colors: ['#E7622E', '#16AACE', '#B8471B', '#135A6E', '#80CCB9', '#F2CD74', '#B89D5C', '#0A3E4C', '#D2D6BE', '#64A393'],
       chart: {
         backgroundColor: null
@@ -174,6 +176,12 @@
           fontSize: "12px",
           color: "#A2A693"
         }
+      },
+      plotOptions: {
+        areaspline: {},
+        series: {
+          marker: {}
+        }
       }
     };
 
@@ -191,9 +199,26 @@
 
     var jsOptions = jsOptionsFunc(defaultOptions, hideLegend, setMin, setMax);
 
-    renderLineChart = function(element, series, opts) {
-      var options = jsOptions(series, opts), data, i, j;
+    renderLineChart = function(element, series, opts, chartType) {
+      chartType = chartType || "spline";
+      var chartOptions = {};
+      if (chartType === "areaspline") {
+        chartOptions = {
+          plotOptions: {
+            areaspline: {
+              stacking: "normal"
+            },
+            series: {
+              marker: {
+                enabled: false
+              }
+            }
+          }
+        };
+      }
+      var options = jsOptions(series, opts, chartOptions), data, i, j;
       options.xAxis.type = "datetime";
+
       options.xAxis.dateTimeLabelFormats = {
         millisecond: '%H:%M:%S.%L',
         second: '%H:%M:%S',
@@ -204,7 +229,10 @@
         month: '%b \'%y',
         year: '%Y'        
       }
-      options.chart = {type: "spline", renderTo: element.id, backgroundColor: null};
+      //options.chart = {type: "spline", renderTo: element.id, backgroundColor: null};
+
+      options.chart.type = chartType;
+      options.chart.renderTo = element.id;
 
       for (i = 0; i < series.length; i++) {
         data = series[i].data;
@@ -218,8 +246,11 @@
     };
 
     renderPieChart = function(element, series, opts) {
-      var options = clone(defaultOptions);
+
+      var options = merge(defaultOptions, opts.library || {});
       options.chart = {renderTo: element.id, backgroundColor: null};
+
+      options.chart.renderTo = element.id;
       options.series = [{
         type: "pie",
         name: "Value",
@@ -228,9 +259,13 @@
       new Highcharts.Chart(options);
     };
 
-    renderColumnChart = function(element, series, opts) {
+    renderColumnChart = function(element, series, opts, chartType) {
+      chartType = chartType || "column";
       var options = jsOptions(series, opts), i, j, s, d, rows = [];
-      options.chart = {type: "column", renderTo: element.id, backgroundColor: null};
+
+      options.chart.type = chartType;
+      options.chart.renderTo = element.id;
+      options.chart.backgroundColor: null;
 
       for (i = 0; i < series.length; i++) {
         s = series[i];
@@ -256,7 +291,7 @@
       for (i = 0; i < series.length; i++) {
         d = [];
         for (j = 0; j < categories.length; j++) {
-          d.push(rows[categories[j]][i]);
+          d.push(rows[categories[j]][i] || 0);
         }
 
         newSeries.push({
@@ -267,6 +302,14 @@
       options.series = newSeries;
 
       new Highcharts.Chart(options);
+    };
+
+    renderBarChart = function(element, series, opts) {
+      renderColumnChart(element, series, opts, "bar");
+    };
+
+    renderAreaChart = function(element, series, opts) {
+      renderLineChart(element, series, opts, "areaspline");
     };
   } else if ("google" in window) { // Google charts
     // load from google
@@ -285,6 +328,7 @@
 
     // Set chart options
     var defaultOptions = {
+      chartArea: {},
       fontName: "'Lucida Grande', 'Lucida Sans Unicode', Verdana, Arial, Helvetica, sans-serif",
       pointSize: 6,
       legend: {
@@ -304,7 +348,8 @@
         gridlines: {
           color: "transparent"
         },
-        baselineColor: "#ccc"
+        baselineColor: "#ccc",
+        viewWindow: {}
       },
       vAxis: {
         textStyle: {
@@ -332,6 +377,14 @@
 
     var setMax = function(options, max) {
       options.vAxis.viewWindow.max = max;
+    };
+
+    var setBarMin = function(options, min) {
+      options.hAxis.viewWindow.min = min;
+    };
+
+    var setBarMax = function(options, max) {
+      options.hAxis.viewWindow.max = max;
     };
 
     var jsOptions = jsOptionsFunc(defaultOptions, hideLegend, setMin, setMax);
@@ -374,22 +427,36 @@
       return data;
     };
 
+    var resize = function(callback) {
+      if (window.attachEvent) {
+        window.attachEvent("onresize", callback);
+      }
+      else if (window.addEventListener) {
+        window.addEventListener("resize", callback, true);
+      }
+      callback();
+    };
+
     renderLineChart = function(element, series, opts) {
       waitForLoaded(function() {
         var options = jsOptions(series, opts);
         var data = createDataTable(series, "datetime");
         var chart = new google.visualization.LineChart(element);
-        chart.draw(data, options);
+        resize( function() {
+          chart.draw(data, options);
+        });
       });
     };
 
     renderPieChart = function(element, series, opts) {
       waitForLoaded(function() {
-        var options = clone(defaultOptions);
-        options.chartArea = {
-          top: "10%",
-          height: "80%"
-        };
+        var chartOptions = {
+          chartArea: {
+            top: "10%",
+            height: "80%"
+          }
+
+        var options = merge(merge(defaultOptions, chartOptions), opts.library || {});
 
         var data = new google.visualization.DataTable();
         data.addColumn("string", "");
@@ -397,7 +464,9 @@
         data.addRows(series);
 
         var chart = new google.visualization.PieChart(element);
-        chart.draw(data, options);
+        resize( function() {
+          chart.draw(data, options);
+        });
       });
     };
 
@@ -406,11 +475,47 @@
         var options = jsOptions(series, opts);
         var data = createDataTable(series, "string");
         var chart = new google.visualization.ColumnChart(element);
-        chart.draw(data, options);
+        resize( function() {
+          chart.draw(data, options);
+        });
+      });
+    };
+
+    renderBarChart = function(element, series, opts) {
+       waitForLoaded(function() {
+        var chartOptions = {
+          hAxis: {
+            gridlines: {
+              color: "#ccc"
+            }
+          }
+        };
+        var options = jsOptionsFunc(defaultOptions, hideLegend, setBarMin, setBarMax)(series, opts, chartOptions);
+        var data = createDataTable(series, "string");
+        var chart = new google.visualization.BarChart(element);
+        resize( function() {
+          chart.draw(data, options);
+        });
+      });
+    };
+
+    renderAreaChart = function(element, series, opts) {
+      waitForLoaded(function() {
+        var chartOptions = {
+          isStacked: true,
+          pointSize: 0,
+          areaOpacity: 0.5
+        };
+        var options = jsOptions(series, opts, chartOptions);
+        var data = createDataTable(series, "datetime");
+        var chart = new google.visualization.AreaChart(element);
+        resize( function() {
+          chart.draw(data, options);
+        });
       });
     };
   } else { // no chart library installed
-    renderLineChart = renderPieChart = renderColumnChart = function() {
+    renderLineChart = renderPieChart = renderColumnChart = renderBarChart = renderAreaChart = function() {
       throw new Error("Please install Google Charts or Highcharts");
     };
   }
@@ -553,6 +658,14 @@
     renderPieChart(element, perfectData, opts);
   }
 
+  function processBarData(element, data, opts) {
+    renderBarChart(element, processSeries(data, opts, false), opts);
+  }
+
+  function processAreaData(element, data, opts) {
+    renderAreaChart(element, processSeries(data, opts, true), opts);
+  }
+
   function setElement(element, data, opts, callback) {
     if (typeof element === "string") {
       element = document.getElementById(element);
@@ -566,11 +679,17 @@
     LineChart: function(element, dataSource, opts) {
       setElement(element, dataSource, opts, processLineData);
     },
+    PieChart: function(element, dataSource, opts) {
+      setElement(element, dataSource, opts, processPieData);
+    },
     ColumnChart: function(element, dataSource, opts) {
       setElement(element, dataSource, opts, processColumnData);
     },
-    PieChart: function(element, dataSource, opts) {
-      setElement(element, dataSource, opts, processPieData);
+    BarChart: function(element, dataSource, opts) {
+      setElement(element, dataSource, opts, processBarData);
+    },
+    AreaChart: function(element, dataSource, opts) {
+      setElement(element, dataSource, opts, processAreaData);
     }
   };
 

@@ -28,6 +28,18 @@ Column chart
 <%= column_chart Task.group_by_hour_of_day(:created_at).count %>
 ```
 
+Bar chart
+
+```erb
+<%= bar_chart Shirt.group("size").count %>
+```
+
+Area chart
+
+```erb
+<%= area_chart Visit.group_by_minute(:created_at).count %>
+```
+
 Multiple series (except pie chart)
 
 ```erb
